@@ -1,5 +1,6 @@
 import OAI.Bridges.AnthropicETH.Reduction
 import OAI.Bridges.AnthropicETH.Simulation
+import OAI.Bridges.AnthropicETH.Converter
 
 /-!
 # RPI-378.3 audit
@@ -45,7 +46,10 @@ def auditedTheorems : List Name :=
   [`OAI.Bridges.AnthropicETH.ethIsFalse_of_not_positiveRateETH,
    `OAI.Bridges.AnthropicETH.simulationHypothesis_proved,
    `OAI.Bridges.AnthropicETH.Sim.toTM2_outputsInTime,
-   `OAI.Bridges.AnthropicETH.ethIsFalse_of_not_positiveRateETH_of_converter]
+   `OAI.Bridges.AnthropicETH.ethIsFalse_of_not_positiveRateETH_of_converter,
+   `OAI.Bridges.AnthropicETH.converterHypothesis_proved,
+   `OAI.Bridges.AnthropicETH.Conv.conv_encClauses,
+   `OAI.Bridges.AnthropicETH.Conv.convProgram]
 
 /-- All constants reachable from `c` through types and values. -/
 partial def closure (env : Environment) (c : Name) : NameSet := Id.run do
@@ -98,6 +102,11 @@ run_cmd do
 #print axioms OAI.Bridges.AnthropicETH.simulationHypothesis_proved
 #print axioms OAI.Bridges.AnthropicETH.Sim.toTM2_outputsInTime
 #print axioms OAI.Bridges.AnthropicETH.ethIsFalse_of_not_positiveRateETH_of_converter
+#print axioms OAI.Bridges.AnthropicETH.converterHypothesis_proved
+#print axioms OAI.Bridges.AnthropicETH.Conv.conv_encClauses
+#print axioms OAI.Bridges.AnthropicETH.Conv.convProgram
+#print axioms OAI.Bridges.AnthropicETH.Conv.capVal_eq
+#print axioms OAI.Bridges.AnthropicETH.Conv.chunks_flatten
 #print axioms OAI.Bridges.AnthropicETH.inTime_of_not_positiveRateETH
 #print axioms OAI.Bridges.AnthropicETH.ethIsFalse_of_forall_inTime
 #print axioms OAI.Bridges.AnthropicETH.length_le_of_isKCNF
