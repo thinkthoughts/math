@@ -1,6 +1,7 @@
 import OAI.Bridges.AnthropicETH.Reduction
 import OAI.Bridges.AnthropicETH.Simulation
 import OAI.Bridges.AnthropicETH.Converter
+import OAI.Bridges.AnthropicETH.Main
 
 /-!
 # RPI-378.3 audit
@@ -43,13 +44,20 @@ def permittedAxioms : List Name := [`propext, `Classical.choice, `Quot.sound]
 
 /-- The theorems under audit. -/
 def auditedTheorems : List Name :=
-  [`OAI.Bridges.AnthropicETH.ethIsFalse_of_not_positiveRateETH,
+  [`OAI.Bridges.AnthropicETH.not_positiveRateETH_implies_ethIsFalse,
+   `OAI.Bridges.AnthropicETH.ethIsFalse_of_not_positiveRateETH,
    `OAI.Bridges.AnthropicETH.simulationHypothesis_proved,
    `OAI.Bridges.AnthropicETH.Sim.toTM2_outputsInTime,
    `OAI.Bridges.AnthropicETH.ethIsFalse_of_not_positiveRateETH_of_converter,
    `OAI.Bridges.AnthropicETH.converterHypothesis_proved,
    `OAI.Bridges.AnthropicETH.Conv.conv_encClauses,
    `OAI.Bridges.AnthropicETH.Conv.convProgram]
+
+/-- The three upstream results the final theorem must not use, named explicitly. -/
+def namedExclusions : List Name :=
+  [`MainResults.ethIsFalse,
+   `OAI.Algorithms.SubexponentialSAT.SqrtLogSpace.original_sat_main,
+   `OAI.Bridges.ETH.not_positiveRateETH]
 
 /-- All constants reachable from `c` through types and values. -/
 partial def closure (env : Environment) (c : Name) : NameSet := Id.run do
@@ -94,10 +102,24 @@ def auditModules : CommandElabM Unit := do
 end OAI.Bridges.AnthropicETH.Audit
 
 open OAI.Bridges.AnthropicETH.Audit in
+/-- For each named exclusion: absent from the closure of `target` (else throw), and report
+whether the constant exists in the environment at all. -/
+def auditNamedExclusions (target : Name) : CommandElabM Unit := do
+  let env ← getEnv
+  let cl := closure env target
+  for n in namedExclusions do
+    if cl.contains n then
+      throwError "AUDIT FAILED: {target} depends on the excluded result {n}"
+    logInfo m!"exclusion check passed for {target}: {n} not in closure \
+      (present in environment: {env.contains n})"
+
+open OAI.Bridges.AnthropicETH.Audit in
 run_cmd do
   auditModules
   for target in auditedTheorems do auditTarget target
+  auditNamedExclusions `OAI.Bridges.AnthropicETH.not_positiveRateETH_implies_ethIsFalse
 
+#print axioms OAI.Bridges.AnthropicETH.not_positiveRateETH_implies_ethIsFalse
 #print axioms OAI.Bridges.AnthropicETH.ethIsFalse_of_not_positiveRateETH
 #print axioms OAI.Bridges.AnthropicETH.simulationHypothesis_proved
 #print axioms OAI.Bridges.AnthropicETH.Sim.toTM2_outputsInTime
