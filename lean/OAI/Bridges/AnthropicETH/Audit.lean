@@ -1,17 +1,22 @@
 import OAI.Bridges.AnthropicETH.Reduction
+import OAI.Bridges.AnthropicETH.Simulation
 
 /-!
-# RPI-378.3a audit
+# RPI-378.3 audit
 
-Building this module prints the axioms of the reduction and fails if the reduction could have
-borrowed either upstream ETH result:
+Building this module **fails** unless every check below passes; on success it reports the counts
+and prints the axioms.
 
 1. **Module check.** No module whose name starts with `OAI.Algorithms`, `OAI.Bridges.ETH`,
-   `Solution`, `Challenge`, `WidthThree`, `PaddedDescent`, `Groundwork` or `ToTuring` is loaded,
-   and `MainResults` is the only Anthropic module present.
-2. **Constant check.** Every constant reachable from the statement and proof of
-   `ethIsFalse_of_not_positiveRateETH` lives in Lean core, Mathlib, `MainResults`,
-   `OAI.ParityWL`, `OAI.Combinatorics.ParityLifts`, or `OAI.Bridges.AnthropicETH`.
+   `Solution`, `Challenge`, `WidthThree`, `PaddedDescent`, `Groundwork`, `ToTuring` or `Bridge` is
+   loaded.
+2. **Constant check**, for each audited theorem: every constant reachable from its statement and
+   proof avoids the forbidden prefixes (`OAI.Algorithms`, `OAI.Bridges.ETH`,
+   `MainResults.ethIsFalse`, `MainResults.mainTheorem`, `Sat3`, `WidthThree`, `Groundwork`,
+   `Bridge`), and every reachable `OAI.*` constant lies in `OAI.ParityWL`,
+   `OAI.Combinatorics.ParityLifts` or `OAI.Bridges.AnthropicETH`.
+3. **Axiom check**, for each audited theorem: its axioms are among `propext`,
+   `Classical.choice`, `Quot.sound` (this also rules out `sorryAx`).
 -/
 
 open Lean Meta Elab Command
@@ -28,6 +33,20 @@ def forbiddenConstPrefixes : List Name :=
   [`OAI.Algorithms, `OAI.Bridges.ETH, `MainResults.ethIsFalse, `MainResults.mainTheorem,
     `Sat3, `WidthThree, `Groundwork, `Bridge]
 
+/-- The only `OAI` namespaces an audited theorem may depend on. -/
+def permittedOAIPrefixes : List Name :=
+  [`OAI.ParityWL, `OAI.Combinatorics.ParityLifts, `OAI.Bridges.AnthropicETH]
+
+/-- The only axioms an audited theorem may depend on. -/
+def permittedAxioms : List Name := [`propext, `Classical.choice, `Quot.sound]
+
+/-- The theorems under audit. -/
+def auditedTheorems : List Name :=
+  [`OAI.Bridges.AnthropicETH.ethIsFalse_of_not_positiveRateETH,
+   `OAI.Bridges.AnthropicETH.simulationHypothesis_proved,
+   `OAI.Bridges.AnthropicETH.Sim.toTM2_outputsInTime,
+   `OAI.Bridges.AnthropicETH.ethIsFalse_of_not_positiveRateETH_of_converter]
+
 /-- All constants reachable from `c` through types and values. -/
 partial def closure (env : Environment) (c : Name) : NameSet := Id.run do
   let mut seen : NameSet := {}
@@ -43,27 +62,42 @@ partial def closure (env : Environment) (c : Name) : NameSet := Id.run do
         for m in v.getUsedConstants do todo := todo.push m
   return seen
 
+/-- Constant and axiom checks for one theorem; throws on any violation. -/
+def auditTarget (target : Name) : CommandElabM Unit := do
+  let env ← getEnv
+  unless env.contains target do throwError "AUDIT FAILED: {target} not found"
+  let cl := closure env target
+  let badC := cl.toList.filter fun n => forbiddenConstPrefixes.any (·.isPrefixOf n)
+  unless badC.isEmpty do
+    throwError "AUDIT FAILED: forbidden constants in the closure of {target}: {badC}"
+  let stray := cl.toList.filter fun n =>
+    (`OAI).isPrefixOf n && !(permittedOAIPrefixes.any (·.isPrefixOf n))
+  unless stray.isEmpty do
+    throwError "AUDIT FAILED: unexpected OAI constants in the closure of {target}: {stray}"
+  let axs ← collectAxioms target
+  let badAx := axs.toList.filter fun a => !(permittedAxioms.contains a)
+  unless badAx.isEmpty do
+    throwError "AUDIT FAILED: {target} depends on non-permitted axioms {badAx}"
+  logInfo m!"checks passed for {target}: {cl.size} constants reachable; axioms {axs}"
+
+/-- Module check; throws on any forbidden module. -/
+def auditModules : CommandElabM Unit := do
+  let mods := (← getEnv).header.moduleNames
+  let bad := mods.filter fun m => forbiddenModulePrefixes.any (·.isPrefixOf m)
+  unless bad.isEmpty do throwError "AUDIT FAILED: forbidden modules loaded: {bad}"
+  logInfo m!"module check passed: {mods.size} modules loaded, none forbidden"
+
 end OAI.Bridges.AnthropicETH.Audit
 
 open OAI.Bridges.AnthropicETH.Audit in
 run_cmd do
-  let env ← getEnv
-  let mods := env.header.moduleNames
-  let bad := mods.filter fun m => forbiddenModulePrefixes.any (·.isPrefixOf m)
-  unless bad.isEmpty do throwError "forbidden modules loaded: {bad}"
-  logInfo m!"module check passed: {mods.size} modules loaded, none forbidden"
-  let target := `OAI.Bridges.AnthropicETH.ethIsFalse_of_not_positiveRateETH
-  let cl := closure env target
-  let badC := cl.toList.filter fun n => forbiddenConstPrefixes.any (·.isPrefixOf n)
-  unless badC.isEmpty do throwError "forbidden constants in closure: {badC}"
-  -- every reachable constant from an OAI-side module is in the two permitted namespaces
-  let oai := cl.toList.filter fun n =>
-    (`OAI).isPrefixOf n && !((`OAI.ParityWL).isPrefixOf n ||
-      (`OAI.Combinatorics.ParityLifts).isPrefixOf n || (`OAI.Bridges.AnthropicETH).isPrefixOf n)
-  logInfo m!"constant check passed: {cl.size} constants reachable; OAI constants outside \
-    ParityWL/ParityLifts/AnthropicETH: {oai}"
+  auditModules
+  for target in auditedTheorems do auditTarget target
 
 #print axioms OAI.Bridges.AnthropicETH.ethIsFalse_of_not_positiveRateETH
+#print axioms OAI.Bridges.AnthropicETH.simulationHypothesis_proved
+#print axioms OAI.Bridges.AnthropicETH.Sim.toTM2_outputsInTime
+#print axioms OAI.Bridges.AnthropicETH.ethIsFalse_of_not_positiveRateETH_of_converter
 #print axioms OAI.Bridges.AnthropicETH.inTime_of_not_positiveRateETH
 #print axioms OAI.Bridges.AnthropicETH.ethIsFalse_of_forall_inTime
 #print axioms OAI.Bridges.AnthropicETH.length_le_of_isKCNF
@@ -71,3 +105,6 @@ run_cmd do
 #print axioms OAI.Bridges.AnthropicETH.encodeFormula_toFormula_length_le
 #print axioms OAI.Bridges.AnthropicETH.satisfiable_toFormula_iff
 #print axioms OAI.Bridges.AnthropicETH.PolyBound.absorb
+#print axioms OAI.Bridges.AnthropicETH.Sim.rep_step
+#print axioms OAI.Bridges.AnthropicETH.Sim.sim_step
+#print axioms OAI.Bridges.AnthropicETH.Sim.clean_spec
