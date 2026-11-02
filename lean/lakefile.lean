@@ -109,6 +109,12 @@ lean_lib OAI.Probability where
 lean_lib OAI.Combinatorics where
   roots := #[`OAI.Combinatorics]
   globs := #[`OAI.Combinatorics.+]
+-- RPI-378.3a: Anthropic's trusted statement file, copied byte for byte from
+-- anthropics/formal-math@16a5ce41304fcdaea4e0be7c132e1c361dc26da5:eth/MainResults.lean
+-- (SHA-256 47f78a9550d95b37d8718dd1ee16ae824da893a5e17c319f737e6d0a5ed24944).
+lean_lib MainResults where
+  srcDir := "Vendor/Anthropic"
+  roots := #[`MainResults]
 -- Keep the preserved challenge sources under their original HodgeConjecture module names.
 lean_lib HodgeConjecture where
   srcDir := "ComparatorChallenges/HodgeConjectureCMAbelianVarieties"
